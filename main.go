@@ -177,11 +177,23 @@ func (data *Data) formatFuncResults(fields *ast.FieldList) string {
 		if len(fields.List) > 1 {
 			s += "("
 		}
-		s += data.formatFuncFields(fields, true)
+
+		f := data.formatFuncFields(fields, true)
+
+		if strings.Contains(f, ",") {
+			f = fmt.Sprintf("(%s)", f)
+		}
+
+		s += f
+
 		if len(fields.List) > 1 {
 			s += ")"
 		}
 	}
+
+	s = strings.ReplaceAll(s, "((", "(")
+	s = strings.ReplaceAll(s, "))", ")")
+
 	return s
 }
 
@@ -287,6 +299,8 @@ func main() {
 		checkFlag(*f)
 	})
 
+	*input = strings.ReplaceAll(*input, "\\", "/")
+
 	path := filepath.Join(*base, *input)
 
 	fi, err := os.Stat(path)
@@ -296,7 +310,7 @@ func main() {
 		checkErr(fmt.Errorf("not a directory: %s", path))
 	}
 
-	outputPkg := strings.ToLower(*pkgPrefix + filepath.Base(path))
+	outputPkg := strings.ToLower(*pkgPrefix + strings.ReplaceAll(*input, "/", "_"))
 	inputPkg := filepath.Base(path)
 
 	data := Data{
