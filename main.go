@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"cmp"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -47,7 +46,7 @@ type Data struct {
 
 func checkFlag(f flag.Flag) {
 	if f.Value.String() == "" {
-		checkErr(fmt.Errorf("missing flag \"%s\": %s\n", f.Name, f.Usage))
+		checkErr(fmt.Errorf("missing flag \"%s\": %s", f.Name, f.Usage))
 	}
 }
 
@@ -95,30 +94,6 @@ func lower1st(s string) string {
 	rs[0] = unicode.ToLower(rs[0])
 
 	return string(rs)
-}
-
-func mapContains[K comparable, V any](m map[K]V, k K) bool {
-	_, ok := m[k]
-
-	return ok
-}
-
-func mapSorted[K cmp.Ordered, V any](m map[K]V) []V {
-	ks := make([]K, 0)
-	for k := range m {
-		ks = append(ks, k)
-	}
-
-	sort.Slice(ks, func(i, j int) bool {
-		return ks[i] < ks[j]
-	})
-
-	vs := make([]V, 0)
-	for _, k := range ks {
-		vs = append(vs, m[k])
-	}
-
-	return vs
 }
 
 func (data *Data) formatType(typ ast.Expr) string {
@@ -243,12 +218,9 @@ func (data *Data) formatFuncDecl(decl *ast.FuncDecl) (Func, error) {
 func (data *Data) addImport(foundPkgName string) {
 	pkgName := foundPkgName
 
-	if strings.HasPrefix(pkgName, "*") {
-		pkgName = pkgName[1:]
-	}
-	if strings.HasPrefix(pkgName, "[]") {
-		pkgName = pkgName[2:]
-	}
+
+	pkgName = strings.TrimPrefix(pkgName,"*")
+	pkgName = strings.TrimPrefix(pkgName,"[]")
 
 	for _, df := range data.ImportPaths {
 		if strings.HasSuffix(df, "/"+pkgName) {
@@ -266,8 +238,6 @@ func (data *Data) addImport(foundPkgName string) {
 }
 
 func (data *Data) scan(pkg *ast.Package, kind ast.ObjKind) error {
-	funcs := make(map[string]Func)
-
 	for _, file := range pkg.Files {
 		for _, i := range file.Imports {
 			if i.Path.Value == "" {
@@ -280,7 +250,7 @@ func (data *Data) scan(pkg *ast.Package, kind ast.ObjKind) error {
 		}
 
 		for name, object := range file.Scope.Objects {
-			if object.Kind == kind && ast.IsExported(name) && !mapContains(funcs, name) {
+			if object.Kind == kind && ast.IsExported(name) && !data.containesFunc(name) {
 				fd := object.Decl.(*ast.FuncDecl)
 
 				f, err := data.formatFuncDecl(fd)
@@ -290,16 +260,28 @@ func (data *Data) scan(pkg *ast.Package, kind ast.ObjKind) error {
 					continue
 				}
 
-				funcs[f.Name] = f
+				data.Funcs = append(data.Funcs, f)
 			}
 		}
 	}
 
 	sort.Strings(data.Imports)
 
-	data.Funcs = mapSorted(funcs)
+	sort.Slice(data.Funcs, func(i, j int) bool {
+		return data.Funcs[i].Name < data.Funcs[j].Name
+	})
 
 	return nil
+}
+
+func (data *Data) containesFunc(name string) bool {
+	for _, f := range data.Funcs {
+		if f.Name == name {
+			return true
+		}
+	}
+
+	return false
 }
 
 func main() {
