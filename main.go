@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	base      = flag.String("b", ".", "base path to package")
+	base      = flag.String("b", ".", "base of filepath to package")
 	input     = flag.String("i", "", "package directory")
 	output    = flag.String("o", "", "target directory of the generated package")
 	pkgPrefix = flag.String("p", "goja_go_", "target package name prefix")
@@ -322,15 +322,14 @@ func main() {
 		Funcs:       nil,
 	}
 
-	pkgs, err := parser.ParseDir(token.NewFileSet(), path, filter, 0)
+	astFiles, err := parser.ParseDir(token.NewFileSet(), path, filter, 0)
 	checkErr(err)
 
-	for _, pkgName := range []string{"github.com/dop251/goja", *input} {
-		data.addImport(pkgName)
-	}
+	data.addImport("github.com/dop251/goja")
+	data.addImport(*input)
 
-	for _, pkg := range pkgs {
-		checkErr(data.scan(path, pkg, ast.Fun))
+	for _, astFile := range astFiles {
+		checkErr(data.scan(path, astFile, ast.Fun))
 	}
 
 	tmpl, err := template.New(*tmpl).ParseFiles(*tmpl)
