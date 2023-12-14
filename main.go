@@ -34,12 +34,12 @@ type Func struct {
 }
 
 type Data struct {
-	GoPackageName string
-	PackageName   string
-	StructName    string
-	ImportPaths   []string
-	Imports       []string
-	Funcs         []Func
+	InputPkg    string
+	OutputPkg   string
+	StructName  string
+	ImportPaths []string
+	Imports     []string
+	Funcs       []Func
 }
 
 func checkFlag(f flag.Flag) {
@@ -111,7 +111,7 @@ func (data *Data) formatType(typ ast.Expr) string {
 			return ""
 		case *ast.Ident:
 			if !strings.Contains(t.Name, ".") && t.IsExported() {
-				return data.GoPackageName + "." + t.Name
+				return data.InputPkg + "." + t.Name
 			} else {
 				return t.Name
 			}
@@ -296,16 +296,16 @@ func main() {
 		checkErr(fmt.Errorf("not a directory: %s", path))
 	}
 
-	pkgName := strings.ToLower(*pkgPrefix + filepath.Base(path))
-	goPackage := filepath.Base(path)
+	outputPkg := strings.ToLower(*pkgPrefix + filepath.Base(path))
+	inputPkg := filepath.Base(path)
 
 	data := Data{
-		GoPackageName: goPackage,
-		PackageName:   pkgName,
-		StructName:    strings.Title(pkgName),
-		ImportPaths:   []string{*input},
-		Imports:       nil,
-		Funcs:         nil,
+		InputPkg:    inputPkg,
+		OutputPkg:   outputPkg,
+		StructName:  strings.Title(outputPkg),
+		ImportPaths: []string{*input},
+		Imports:     nil,
+		Funcs:       nil,
 	}
 
 	pkgs, err := parser.ParseDir(token.NewFileSet(), path, filter, 0)
@@ -326,7 +326,7 @@ func main() {
 
 	checkErr(tmpl.Execute(&buffer, data))
 
-	filename, err := filepath.Abs(filepath.Join(*output, pkgName, strings.ToLower(pkgName)+".go"))
+	filename, err := filepath.Abs(filepath.Join(*output, outputPkg, strings.ToLower(outputPkg)+".go"))
 	checkErr(err)
 
 	fmt.Printf("%s\n", filename)

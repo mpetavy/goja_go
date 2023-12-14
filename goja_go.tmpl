@@ -1,4 +1,4 @@
-package {{ .PackageName }}
+package {{ .OutputPkg }}
 
 import (
     {{ range .Imports }}"{{ . }}"
@@ -9,7 +9,7 @@ type {{ .StructName }} struct{}
 
 {{ range .Funcs }}
 func (_ {{ $.StructName }}) {{ .Name }}{{ .Params }} {{ .Results }} {
-    {{ if gt (len .Results) 2 }}return {{ end }}{{ $.GoPackageName }}.{{ .Name }}{{ .ParamNames }}
+    {{ if gt (len .Results) 2 }}return {{ end }}{{ $.InputPkg }}.{{ .Name }}{{ .ParamNames }}
 }
 {{ end }}
 func Register{{ .StructName }}(vm *goja.Runtime) error {
