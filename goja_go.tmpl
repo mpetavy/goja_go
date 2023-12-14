@@ -19,11 +19,15 @@ func Register{{ .StructName }}(vm *goja.Runtime) error {
 
 	obj := vm.NewObject()
 	{{ range .Funcs }}
-	err = obj.Set("{{ .Name }}", s.{{ .Name }})
+	err = obj.Set("{{ .JsName }}", s.{{ .Name }})
 	if err != nil {
 	    return err
 	}
 	{{ end }}
+	err = vm.Set("{{ .JsStructName }}", obj)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

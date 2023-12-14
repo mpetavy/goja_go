@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"text/template"
+	"unicode"
 )
 
 var (
@@ -26,6 +27,7 @@ var (
 
 type Func struct {
 	Name       string
+	JsName     string
 	Receiver   string
 	Signature  string
 	Params     string
@@ -34,12 +36,13 @@ type Func struct {
 }
 
 type Data struct {
-	InputPkg    string
-	OutputPkg   string
-	StructName  string
-	ImportPaths []string
-	Imports     []string
-	Funcs       []Func
+	InputPkg     string
+	OutputPkg    string
+	StructName   string
+	JsStructName string
+	ImportPaths  []string
+	Imports      []string
+	Funcs        []Func
 }
 
 func checkFlag(f flag.Flag) {
@@ -78,6 +81,20 @@ func filter(info os.FileInfo) bool {
 	}
 
 	return true
+}
+
+func upper1st(s string) string {
+	rs := []rune(s)
+	rs[0] = unicode.ToUpper(rs[0])
+
+	return string(rs)
+}
+
+func lower1st(s string) string {
+	rs := []rune(s)
+	rs[0] = unicode.ToLower(rs[0])
+
+	return string(rs)
 }
 
 func mapContains[K comparable, V any](m map[K]V, k K) bool {
@@ -215,6 +232,7 @@ func (data *Data) formatFuncDecl(decl *ast.FuncDecl) (Func, error) {
 	}
 
 	f.Name = decl.Name.Name
+	f.JsName = lower1st(f.Name)
 	f.Params = fmt.Sprintf("(%s)", data.formatFuncFields(decl.Type.Params, true))
 	f.ParamNames = fmt.Sprintf("(%s)", data.formatFuncFields(decl.Type.Params, false))
 	f.Results = data.formatFuncResults(decl.Type.Results)
@@ -247,7 +265,7 @@ func (data *Data) addImport(foundPkgName string) {
 	data.Imports = append(data.Imports, pkgName)
 }
 
-func (data *Data) scan(path string, pkg *ast.Package, kind ast.ObjKind) error {
+func (data *Data) scan(pkg *ast.Package, kind ast.ObjKind) error {
 	funcs := make(map[string]Func)
 
 	for _, file := range pkg.Files {
@@ -314,12 +332,13 @@ func main() {
 	inputPkg := filepath.Base(path)
 
 	data := Data{
-		InputPkg:    inputPkg,
-		OutputPkg:   outputPkg,
-		StructName:  strings.Title(outputPkg),
-		ImportPaths: []string{*input},
-		Imports:     nil,
-		Funcs:       nil,
+		InputPkg:     inputPkg,
+		OutputPkg:    outputPkg,
+		StructName:   upper1st(outputPkg),
+		JsStructName: lower1st(outputPkg),
+		ImportPaths:  []string{*input},
+		Imports:      nil,
+		Funcs:        nil,
 	}
 
 	astFiles, err := parser.ParseDir(token.NewFileSet(), path, filter, 0)
@@ -329,7 +348,7 @@ func main() {
 	data.addImport(*input)
 
 	for _, astFile := range astFiles {
-		checkErr(data.scan(path, astFile, ast.Fun))
+		checkErr(data.scan(astFile, ast.Fun))
 	}
 
 	tmpl, err := template.New(*tmpl).ParseFiles(*tmpl)
