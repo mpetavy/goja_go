@@ -17,14 +17,10 @@ import (
 )
 
 var (
-	input  = flag.String("i", "", "directory which holds the source files of package")
-	output = flag.String("o", ".", "target file location of the generated package module file")
-	tmpl   = flag.String("t", "gomodule.tmpl", "template file for the generating package module file")
-
-	notypes  = flag.Bool("notypes", false, "Don't list package types")
-	nofuncs  = flag.Bool("nofuncs", false, "Don't list package functions")
-	novars   = flag.Bool("novars", false, "Don't list package variables")
-	noconsts = flag.Bool("noconsts", false, "Don't list package consts")
+	input     = flag.String("i", "", "package directory")
+	output    = flag.String("o", "", "target directory of the generated package")
+	pkgPrefix = flag.String("p", "goja_go_", "target package name prefix")
+	tmpl      = flag.String("t", "goja_go.tmpl", "template file")
 
 	data Data
 )
@@ -39,17 +35,17 @@ type Func struct {
 }
 
 type Data struct {
-	GoPackage    string
-	PackageName  string
-	StructName   string
-	ReceiverName string
-	Imports      []string
-	Funcs        []Func
+	GoPackageName  string
+	PackageName    string
+	StructName     string
+	DefinedImports []string
+	Imports        []string
+	Funcs          []Func
 }
 
 func checkFlag(f flag.Flag) {
 	if f.Value.String() == "" {
-		checkErr(fmt.Errorf("missing flag \"%s\" definition: %s\n", f.Name, f.Usage))
+		checkErr(fmt.Errorf("missing flag \"%s\": %s\n", f.Name, f.Usage))
 	}
 }
 
@@ -109,29 +105,29 @@ func mapSorted[K cmp.Ordered, V any](m map[K]V) []V {
 	return vs
 }
 
-func formatType(typ ast.Expr) string {
+func (data *Data) formatType(typ ast.Expr) string {
 	fn := func() string {
 		switch t := typ.(type) {
 		case nil:
 			return ""
 		case *ast.Ident:
 			if !strings.Contains(t.Name, ".") && t.IsExported() {
-				return data.GoPackage + "." + t.Name
+				return data.GoPackageName + "." + t.Name
 			} else {
 				return t.Name
 			}
 		case *ast.SelectorExpr:
-			return fmt.Sprintf("%s.%s", formatType(t.X), t.Sel.Name)
+			return fmt.Sprintf("%s.%s", data.formatType(t.X), t.Sel.Name)
 		case *ast.StarExpr:
-			return fmt.Sprintf("*%s", formatType(t.X))
+			return fmt.Sprintf("*%s", data.formatType(t.X))
 		case *ast.ArrayType:
-			return fmt.Sprintf("[%s]%s", formatType(t.Len), formatType(t.Elt))
+			return fmt.Sprintf("[%s]%s", data.formatType(t.Len), data.formatType(t.Elt))
 		case *ast.Ellipsis:
-			return formatType(t.Elt)
+			return data.formatType(t.Elt)
 		case *ast.FuncType:
-			return fmt.Sprintf("func(%s)%s", formatFuncFields(t.Params, true), formatFuncResults(t.Results))
+			return fmt.Sprintf("func(%s)%s", data.formatFuncFields(t.Params, true), data.formatFuncResults(t.Results))
 		case *ast.MapType:
-			return fmt.Sprintf("map[%s]%s", formatType(t.Key), formatType(t.Value))
+			return fmt.Sprintf("map[%s]%s", data.formatType(t.Key), data.formatType(t.Value))
 		case *ast.ChanType:
 			// FIXME
 			panic(fmt.Errorf("unsupported chan type %#v", t))
@@ -144,10 +140,17 @@ func formatType(typ ast.Expr) string {
 
 	result := fn()
 
+	p := strings.Index(result, ".")
+	if p != -1 {
+		pkgName := result[:p]
+
+		data.addImport(pkgName)
+	}
+
 	return result
 }
 
-func formatFuncFields(fields *ast.FieldList, inclType bool) string {
+func (data *Data) formatFuncFields(fields *ast.FieldList, inclType bool) string {
 	s := ""
 	for i, field := range fields.List {
 		for j, name := range field.Names {
@@ -159,7 +162,7 @@ func formatFuncFields(fields *ast.FieldList, inclType bool) string {
 		}
 
 		if inclType {
-			s += formatType(field.Type)
+			s += data.formatType(field.Type)
 		}
 		if i != len(fields.List)-1 {
 			s += ", "
@@ -169,13 +172,13 @@ func formatFuncFields(fields *ast.FieldList, inclType bool) string {
 	return strings.TrimSpace(s)
 }
 
-func formatFuncResults(fields *ast.FieldList) string {
+func (data *Data) formatFuncResults(fields *ast.FieldList) string {
 	s := ""
 	if fields != nil {
 		if len(fields.List) > 1 {
 			s += "("
 		}
-		s += formatFuncFields(fields, true)
+		s += data.formatFuncFields(fields, true)
 		if len(fields.List) > 1 {
 			s += ")"
 		}
@@ -183,7 +186,7 @@ func formatFuncResults(fields *ast.FieldList) string {
 	return s
 }
 
-func formatFuncDecl(decl *ast.FuncDecl) (Func, error) {
+func (data *Data) formatFuncDecl(decl *ast.FuncDecl) (Func, error) {
 	f := Func{}
 
 	if decl.Recv != nil {
@@ -197,42 +200,61 @@ func formatFuncDecl(decl *ast.FuncDecl) (Func, error) {
 		} else if len(field.Names) != 1 {
 			return f, fmt.Errorf("strange receiver field for %s: %#v", decl.Name.Name, field)
 		}
-		f.Receiver = fmt.Sprintf("(%s %s) ", field.Names[0], formatType(field.Type))
+		f.Receiver = fmt.Sprintf("(%s %s) ", field.Names[0], data.formatType(field.Type))
 	}
 
 	f.Name = decl.Name.Name
-	f.Params = fmt.Sprintf("(%s)", formatFuncFields(decl.Type.Params, true))
-	f.ParamNames = fmt.Sprintf("(%s)", formatFuncFields(decl.Type.Params, false))
-	f.Results = formatFuncResults(decl.Type.Results)
+	f.Params = fmt.Sprintf("(%s)", data.formatFuncFields(decl.Type.Params, true))
+	f.ParamNames = fmt.Sprintf("(%s)", data.formatFuncFields(decl.Type.Params, false))
+	f.Results = data.formatFuncResults(decl.Type.Results)
 
 	return f, nil
 }
 
-func addImport(src string, pkgName string) {
-	if !slices.Contains(data.Imports, pkgName) && !strings.HasPrefix(pkgName, "internal/") {
-		data.Imports = append(data.Imports, pkgName)
+func (data *Data) addImport(foundPkgName string) {
+	pkgName := foundPkgName
+
+	if strings.HasPrefix(pkgName, "*") {
+		pkgName = pkgName[1:]
 	}
+	if strings.HasPrefix(pkgName, "[]") {
+		pkgName = pkgName[2:]
+	}
+
+	if slices.Contains(data.Imports, pkgName) || strings.HasPrefix(pkgName, "internal/") {
+		return
+	}
+
+	for _, df := range data.DefinedImports {
+		if strings.HasSuffix(df, "/"+pkgName) {
+			pkgName = df
+
+			break
+		}
+	}
+
+	data.Imports = append(data.Imports, pkgName)
 }
 
-func scan(data *Data, path string, pkg *ast.Package, kind ast.ObjKind) error {
+func (data *Data) scan(path string, pkg *ast.Package, kind ast.ObjKind) error {
 	funcs := make(map[string]Func)
 
-	for _, f := range pkg.Files {
-		for _, i := range f.Imports {
+	for _, file := range pkg.Files {
+		for _, i := range file.Imports {
 			if i.Path.Value == "" {
 				continue
 			}
 
 			name := i.Path.Value[1 : len(i.Path.Value)-1]
 
-			addImport(f.Name.Name, name)
+			data.DefinedImports = append(data.DefinedImports, name)
 		}
 
-		for name, object := range f.Scope.Objects {
+		for name, object := range file.Scope.Objects {
 			if object.Kind == kind && ast.IsExported(name) && !mapContains(funcs, name) {
 				fd := object.Decl.(*ast.FuncDecl)
 
-				f, err := formatFuncDecl(fd)
+				f, err := data.formatFuncDecl(fd)
 				checkErr(err)
 
 				if f.Name == "" {
@@ -251,20 +273,16 @@ func scan(data *Data, path string, pkg *ast.Package, kind ast.ObjKind) error {
 	return nil
 }
 
-func firstUpper(s string) string {
-	return strings.ToUpper(s[:1]) + s[1:]
-}
-
-func firstLower(s string) string {
-	return strings.ToLower(s[:1]) + s[1:]
-}
-
-func (td Data) Fn() string {
-	return "Hello world!"
-}
-
 func main() {
+	fmt.Printf("GOJA_GO - create GO modules for GOJA\n\n")
+
 	flag.Parse()
+
+	if flag.NFlag() == 0 {
+		flag.Usage()
+
+		os.Exit(1)
+	}
 
 	flag.VisitAll(func(f *flag.Flag) {
 		checkFlag(*f)
@@ -277,22 +295,26 @@ func main() {
 		checkErr(fmt.Errorf("not a directory: %s", *input))
 	}
 
-	pkgName := "Goja_" + filepath.Base(*input)
+	pkgName := strings.ToLower(*pkgPrefix + filepath.Base(*input))
+	goPackage := filepath.Base(*input)
 
 	data = Data{
-		GoPackage:    filepath.Base(*input),
-		PackageName:  strings.ToLower(pkgName),
-		StructName:   pkgName,
-		ReceiverName: strings.ToLower(pkgName[:1]),
-		Imports:      []string{"github.com/dop251/goja", data.GoPackage},
-		Funcs:        nil,
+		GoPackageName: goPackage,
+		PackageName:   pkgName,
+		StructName:    strings.Title(pkgName),
+		Imports:       nil,
+		Funcs:         nil,
 	}
 
 	pkgs, err := parser.ParseDir(token.NewFileSet(), *input, filter, 0)
 	checkErr(err)
 
 	for _, pkg := range pkgs {
-		checkErr(scan(&data, *input, pkg, ast.Fun))
+		checkErr(data.scan(*input, pkg, ast.Fun))
+	}
+
+	for _, pkgName := range []string{"github.com/dop251/goja", goPackage} {
+		data.addImport(pkgName)
 	}
 
 	tmpl, err := template.New(*tmpl).ParseFiles(*tmpl)
@@ -300,42 +322,14 @@ func main() {
 
 	var buffer bytes.Buffer
 
-	err = tmpl.Execute(&buffer, data)
-	checkErr(err)
-	if err != nil {
-		panic(err)
-	}
+	checkErr(tmpl.Execute(&buffer, data))
 
-	filename := strings.ToLower(pkgName) + ".go"
-
-	err = os.WriteFile(filename, buffer.Bytes(), os.ModePerm)
+	filename, err := filepath.Abs(filepath.Join(*output, pkgName, strings.ToLower(pkgName)+".go"))
 	checkErr(err)
 
-	//astFile, err := parser.ParseFile(token.NewFileSet(), filename, nil, 0)
-	//checkErr(err)
-	//
-	//fset := token.NewFileSet()
-	//ast.Inspect(astFile, func(node ast.Node) bool {
-	//	switch n := node.(type) {
-	//	case *ast.CallExpr:
-	//		fmt.Println(n) // prints every func call expression
-	//	}
-	//	return true
-	//
-	//	var s string
-	//	switch x := node.(type) {
-	//	//case *ast.FuncDecl:
-	//	//	s = x.Name.Name
-	//	//case *ast.BasicLit:
-	//	//	s = x.Value
-	//	//case *ast.Ident:
-	//	//	s = x.Name
-	//	case *ast.CallExpr:
-	//		s = x.
-	//	}
-	//	if s != "" {
-	//		fmt.Printf("%s:\t%s\n", fset.Position(node.Pos()), s)
-	//	}
-	//	return true
-	//})
+	fmt.Printf("%s\n", filename)
+
+	checkErr(os.MkdirAll(filepath.Dir(filename), os.ModePerm))
+
+	checkErr(os.WriteFile(filename, buffer.Bytes(), os.ModePerm))
 }

@@ -9,11 +9,10 @@ type {{ .StructName }} struct{}
 
 {{ range .Funcs }}
 func (_ {{ $.StructName }}) {{ .Name }}{{ .Params }} {{ .Results }} {
-    {{ if gt (len .Results) 2 }}return {{ end }}{{ $.GoPackage }}.{{ .Name }}{{ .ParamNames }}
+    {{ if gt (len .Results) 2 }}return {{ end }}{{ $.GoPackageName }}.{{ .Name }}{{ .ParamNames }}
 }
 {{ end }}
-
-func register{{ .StructName }}(vm *goja.Runtime) error {
+func Register{{ .StructName }}(vm *goja.Runtime) error {
 	s := &{{ .StructName }}{}
 
     var err error
