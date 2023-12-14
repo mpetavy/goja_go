@@ -17,12 +17,11 @@ import (
 )
 
 var (
+	base      = flag.String("b", ".", "base path to package")
 	input     = flag.String("i", "", "package directory")
 	output    = flag.String("o", "", "target directory of the generated package")
 	pkgPrefix = flag.String("p", "goja_go_", "target package name prefix")
 	tmpl      = flag.String("t", "goja_go.tmpl", "template file")
-
-	data Data
 )
 
 type Func struct {
@@ -35,12 +34,12 @@ type Func struct {
 }
 
 type Data struct {
-	GoPackageName  string
-	PackageName    string
-	StructName     string
-	DefinedImports []string
-	Imports        []string
-	Funcs          []Func
+	GoPackageName string
+	PackageName   string
+	StructName    string
+	ImportPaths   []string
+	Imports       []string
+	Funcs         []Func
 }
 
 func checkFlag(f flag.Flag) {
@@ -221,16 +220,16 @@ func (data *Data) addImport(foundPkgName string) {
 		pkgName = pkgName[2:]
 	}
 
-	if slices.Contains(data.Imports, pkgName) || strings.HasPrefix(pkgName, "internal/") {
-		return
-	}
-
-	for _, df := range data.DefinedImports {
+	for _, df := range data.ImportPaths {
 		if strings.HasSuffix(df, "/"+pkgName) {
 			pkgName = df
 
 			break
 		}
+	}
+
+	if slices.Contains(data.Imports, pkgName) || strings.HasPrefix(pkgName, "internal/") {
+		return
 	}
 
 	data.Imports = append(data.Imports, pkgName)
@@ -247,7 +246,7 @@ func (data *Data) scan(path string, pkg *ast.Package, kind ast.ObjKind) error {
 
 			name := i.Path.Value[1 : len(i.Path.Value)-1]
 
-			data.DefinedImports = append(data.DefinedImports, name)
+			data.ImportPaths = append(data.ImportPaths, name)
 		}
 
 		for name, object := range file.Scope.Objects {
@@ -288,33 +287,36 @@ func main() {
 		checkFlag(*f)
 	})
 
-	fi, err := os.Stat(*input)
+	path := filepath.Join(*base, *input)
+
+	fi, err := os.Stat(path)
 	checkErr(err)
 
 	if !fi.IsDir() {
-		checkErr(fmt.Errorf("not a directory: %s", *input))
+		checkErr(fmt.Errorf("not a directory: %s", path))
 	}
 
-	pkgName := strings.ToLower(*pkgPrefix + filepath.Base(*input))
-	goPackage := filepath.Base(*input)
+	pkgName := strings.ToLower(*pkgPrefix + filepath.Base(path))
+	goPackage := filepath.Base(path)
 
-	data = Data{
+	data := Data{
 		GoPackageName: goPackage,
 		PackageName:   pkgName,
 		StructName:    strings.Title(pkgName),
+		ImportPaths:   []string{*input},
 		Imports:       nil,
 		Funcs:         nil,
 	}
 
-	pkgs, err := parser.ParseDir(token.NewFileSet(), *input, filter, 0)
+	pkgs, err := parser.ParseDir(token.NewFileSet(), path, filter, 0)
 	checkErr(err)
 
-	for _, pkg := range pkgs {
-		checkErr(data.scan(*input, pkg, ast.Fun))
+	for _, pkgName := range []string{"github.com/dop251/goja", *input} {
+		data.addImport(pkgName)
 	}
 
-	for _, pkgName := range []string{"github.com/dop251/goja", goPackage} {
-		data.addImport(pkgName)
+	for _, pkg := range pkgs {
+		checkErr(data.scan(path, pkg, ast.Fun))
 	}
 
 	tmpl, err := template.New(*tmpl).ParseFiles(*tmpl)
