@@ -1,0 +1,30 @@
+package {{ .PackageName }}
+
+import (
+    {{ range .Imports }}"{{ . }}"
+    {{ end }}
+)
+
+type {{ .StructName }} struct{}
+
+{{ range .Funcs }}
+func (_ {{ $.StructName }}) {{ .Name }}{{ .Params }} {{ .Results }} {
+    {{ if gt (len .Results) 2 }}return {{ end }}{{ $.GoPackage }}.{{ .Name }}{{ .ParamNames }}
+}
+{{ end }}
+
+func register{{ .StructName }}(vm *goja.Runtime) error {
+	s := &{{ .StructName }}{}
+
+    var err error
+
+	obj := vm.NewObject()
+	{{ range .Funcs }}
+	err = obj.Set("{{ .Name }}", s.{{ .Name }})
+	if err != nil {
+	    return err
+	}
+	{{ end }}
+
+	return nil
+}
