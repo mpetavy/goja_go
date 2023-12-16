@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"github.com/mpetavy/common"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -20,7 +21,7 @@ import (
 )
 
 var (
-	gomodFile = flag.String("g", ".", "path to go.mod file")
+	gomodFile = flag.String("g", "", "path to go.mod file")
 	pkgName   = flag.String("n", "", "package name")
 	output    = flag.String("o", "", "target directory of the generated package")
 	prefix    = flag.String("p", "goja_go_", "target package name prefix")
@@ -47,20 +48,8 @@ type Data struct {
 	Funcs        []Func
 }
 
-func checkFlag(f flag.Flag) {
-	if f.Value.String() == "" {
-		checkErr(fmt.Errorf("missing flag \"%s\": %s", f.Name, f.Usage))
-	}
-}
-
-func checkErr(err error) {
-	if err == nil {
-		return
-	}
-
-	fmt.Fprintf(os.Stderr, err.Error())
-
-	os.Exit(1)
+func init() {
+	common.Init("goja_go", "", "", "", "2023", "create GOJA JS bridges to GO modules", "mpetavy", fmt.Sprintf("https://github.com/mpetavy/%s", common.Title()), common.APACHE, nil, nil, nil, run, 0)
 }
 
 func filter(info os.FileInfo) bool {
@@ -252,7 +241,9 @@ func (data *Data) scan(pkg *ast.Package, kind ast.ObjKind) error {
 				fd := object.Decl.(*ast.FuncDecl)
 
 				f, err := data.formatFuncDecl(fd)
-				checkErr(err)
+				if common.Error(err) {
+					return err
+				}
 
 				if f.Name == "" {
 					continue
@@ -284,17 +275,23 @@ func (data *Data) containesFunc(name string) bool {
 
 func findPackagePath() (string, string, error) {
 	fi, err := os.Stat(*gomodFile)
-	checkErr(err)
+	if common.Error(err) {
+		return "", "", err
+	}
 
 	if fi.IsDir() {
 		*gomodFile = filepath.Join(*gomodFile, "go.mod")
 	}
 
 	ba, err := os.ReadFile(*gomodFile)
-	checkErr(err)
+	if common.Error(err) {
+		return "", "", err
+	}
 
 	gomod, err := modfile.Parse(*gomodFile, ba, nil)
-	checkErr(err)
+	if common.Error(err) {
+		return "", "", err
+	}
 
 	for _, r := range gomod.Replace {
 		if strings.HasPrefix(r.Old.String(), *pkgName) {
@@ -304,7 +301,9 @@ func findPackagePath() (string, string, error) {
 
 	cmd := exec.Command("go", "env", "GOMODCACHE")
 	stdout, err := cmd.Output()
-	checkErr(err)
+	if common.Error(err) {
+		return "", "", err
+	}
 
 	gomodcache := strings.TrimSpace(string(stdout))
 
@@ -325,31 +324,21 @@ func getPackageName() string {
 	return *prefix + s
 }
 
-func main() {
-	fmt.Printf("GOJA_GO - create GO modules for GOJA\n\n")
-
-	flag.Parse()
-
-	if flag.NFlag() == 0 {
-		flag.Usage()
-
-		os.Exit(1)
-	}
-
-	flag.VisitAll(func(f *flag.Flag) {
-		checkFlag(*f)
-	})
-
+func run() error {
 	*pkgName = strings.ReplaceAll(*pkgName, "\\", "/")
 
 	pathVersion, path, err := findPackagePath()
-	checkErr(err)
+	if common.Error(err) {
+		return err
+	}
 
 	fi, err := os.Stat(pathVersion)
-	checkErr(err)
+	if common.Error(err) {
+		return err
+	}
 
 	if !fi.IsDir() {
-		checkErr(fmt.Errorf("not a directory: %s", pathVersion))
+		return fmt.Errorf("not a directory: %s", pathVersion)
 	}
 
 	outputPkg := getPackageName()
@@ -367,28 +356,52 @@ func main() {
 	}
 
 	astFiles, err := parser.ParseDir(token.NewFileSet(), pathVersion, filter, 0)
-	checkErr(err)
+	if common.Error(err) {
+		return err
+	}
 
 	data.addImport("github.com/dop251/goja")
 	data.addImport(*pkgName)
 
 	for _, astFile := range astFiles {
-		checkErr(data.scan(astFile, ast.Fun))
+		err := data.scan(astFile, ast.Fun)
+		if common.Error(err) {
+			return err
+		}
 	}
 
 	tmpl, err := template.New(*tmpl).ParseFiles(*tmpl)
-	checkErr(err)
+	if common.Error(err) {
+		return err
+	}
 
 	var buffer bytes.Buffer
 
-	checkErr(tmpl.Execute(&buffer, data))
+	err = tmpl.Execute(&buffer, data)
+	if common.Error(err) {
+		return err
+	}
 
 	filename, err := filepath.Abs(filepath.Join(*output, outputPkg, strings.ToLower(outputPkg)+".go"))
-	checkErr(err)
+	if common.Error(err) {
+		return err
+	}
 
 	fmt.Printf("%s\n", filename)
 
-	checkErr(os.MkdirAll(filepath.Dir(filename), os.ModePerm))
+	err = os.MkdirAll(filepath.Dir(filename), os.ModePerm)
+	if common.Error(err) {
+		return err
+	}
 
-	checkErr(os.WriteFile(filename, buffer.Bytes(), os.ModePerm))
+	err = os.WriteFile(filename, buffer.Bytes(), os.ModePerm)
+	if common.Error(err) {
+		return err
+	}
+
+	return nil
+}
+
+func main() {
+	common.Run([]string{"g", "n"})
 }
