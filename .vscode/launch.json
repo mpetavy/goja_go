@@ -10,7 +10,7 @@
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}",
-            "args": ["-b=/home/ransom/app/go/src","-i=encoding/xml","-o=~/temp"]
+            "args": ["-b=/home/ransom/go/src/hydra","-i=github.com/beevik/etree","-o=~/temp"]
         }
     ]
 }

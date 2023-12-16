@@ -7,19 +7,21 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"golang.org/x/mod/modfile"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
 	"text/template"
 	"unicode"
+
+	"golang.org/x/mod/modfile"
 )
 
 var (
-	gomodFile = flag.String("b", ".", "path to go.mod file")
-	input     = flag.String("i", "", "package name")
+	gomodFile = flag.String("g", ".", "path to go.mod file")
+	pkgName   = flag.String("n", "", "package name")
 	output    = flag.String("o", "", "target directory of the generated package")
 	prefix    = flag.String("p", "goja_go_", "target package name prefix")
 	tmpl      = flag.String("t", "goja_go.tmpl", "template file")
@@ -280,7 +282,14 @@ func (data *Data) containesFunc(name string) bool {
 	return false
 }
 
-func findPackagePath() (string, error) {
+func findPackagePath() (string, string, error) {
+	fi, err := os.Stat(*gomodFile)
+	checkErr(err)
+
+	if fi.IsDir() {
+		*gomodFile = filepath.Join(*gomodFile, "go.mod")
+	}
+
 	ba, err := os.ReadFile(*gomodFile)
 	checkErr(err)
 
@@ -288,21 +297,32 @@ func findPackagePath() (string, error) {
 	checkErr(err)
 
 	for _, r := range gomod.Replace {
-		fmt.Printf("%v %v\n", r.Old, r.New)
-		if r.Old.String() == *input {
-			return filepath.Join(filepath.Dir(*gomodFile), r.New.String()), nil
+		if strings.HasPrefix(r.Old.String(), *pkgName) {
+			return filepath.Join(filepath.Dir(*gomodFile), r.New.String()), filepath.Join(filepath.Dir(*gomodFile), r.New.Path), nil
 		}
 	}
+
+	cmd := exec.Command("go", "env", "GOMODCACHE")
+	stdout, err := cmd.Output()
+	checkErr(err)
+
+	gomodcache := strings.TrimSpace(string(stdout))
 
 	for _, r := range gomod.Require {
-		if r.Mod.String() == *input {
-			return filepath.Join(filepath.Dir(*gomodFile), r.Mod.String()), nil
+		if strings.HasPrefix(r.Mod.String(), *pkgName) {
+			return filepath.Join(string(gomodcache), r.Mod.String()), filepath.Join(string(gomodcache), r.Mod.Path), nil
 		}
 	}
 
-	os.Exit(1)
+	return "", "", fmt.Errorf("unknown package name: %s", *pkgName)
+}
 
-	return "", fmt.Errorf("unknown package name: %s", *input)
+func getPackageName() string {
+	s := *pkgName
+	s = strings.ToLower(strings.ReplaceAll(s, "/", "_"))
+	s = strings.ToLower(strings.ReplaceAll(s, ".", "_"))
+
+	return *prefix + s
 }
 
 func main() {
@@ -320,19 +340,20 @@ func main() {
 		checkFlag(*f)
 	})
 
-	*input = strings.ReplaceAll(*input, "\\", "/")
+	*pkgName = strings.ReplaceAll(*pkgName, "\\", "/")
 
-	path, err := findPackagePath()
+	pathVersion, path, err := findPackagePath()
 	checkErr(err)
 
-	fi, err := os.Stat(path)
+	fi, err := os.Stat(pathVersion)
 	checkErr(err)
 
 	if !fi.IsDir() {
-		checkErr(fmt.Errorf("not a directory: %s", path))
+		checkErr(fmt.Errorf("not a directory: %s", pathVersion))
 	}
 
-	outputPkg := strings.ToLower(*prefix + strings.ReplaceAll(*input, "/", "_"))
+	outputPkg := getPackageName()
+
 	inputPkg := filepath.Base(path)
 
 	data := Data{
@@ -340,16 +361,16 @@ func main() {
 		OutputPkg:    outputPkg,
 		StructName:   upper1st(outputPkg),
 		JsStructName: lower1st(outputPkg),
-		ImportPaths:  []string{*input},
+		ImportPaths:  []string{*pkgName},
 		Imports:      nil,
 		Funcs:        nil,
 	}
 
-	astFiles, err := parser.ParseDir(token.NewFileSet(), path, filter, 0)
+	astFiles, err := parser.ParseDir(token.NewFileSet(), pathVersion, filter, 0)
 	checkErr(err)
 
 	data.addImport("github.com/dop251/goja")
-	data.addImport(*input)
+	data.addImport(*pkgName)
 
 	for _, astFile := range astFiles {
 		checkErr(data.scan(astFile, ast.Fun))
