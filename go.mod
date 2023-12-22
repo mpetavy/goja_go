@@ -3,7 +3,7 @@ module goja_go
 go 1.21.3
 
 require (
-	github.com/dop251/goja v0.0.0-20231027120936-b396bb4c349d
+	github.com/mpetavy/common v1.6.36
 	golang.org/x/mod v0.14.0
 )
 
@@ -15,6 +15,7 @@ require (
 	github.com/beevik/etree v1.1.4 // indirect
 	github.com/creack/goselect v0.1.2 // indirect
 	github.com/dlclark/regexp2 v1.9.0 // indirect
+	github.com/dop251/goja v0.0.0-20231027120936-b396bb4c349d // indirect
 	github.com/dop251/goja_nodejs v0.0.0-20230322100729-2550c7b6c124 // indirect
 	github.com/fatih/structtag v1.2.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
@@ -41,7 +42,6 @@ require (
 	github.com/labstack/gommon v0.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.18 // indirect
-	github.com/mpetavy/common v1.6.33 // indirect
 	github.com/ompluscator/dynamic-struct v1.4.0 // indirect
 	github.com/paulrosania/go-charset v0.0.0-20190326053356-55c9d7a5834c // indirect
 	github.com/quasoft/memstore v0.0.0-20191010062613-2bce066d2b0b // indirect
@@ -63,3 +63,5 @@ require (
 	google.golang.org/protobuf v1.30.0 // indirect
 	software.sslmate.com/src/go-pkcs12 v0.2.0 // indirect
 )
+
+//replace github.com/mpetavy/common => ../common

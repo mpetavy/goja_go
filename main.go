@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"embed"
 	"flag"
 	"fmt"
 	"github.com/mpetavy/common"
@@ -48,8 +49,11 @@ type Data struct {
 	Funcs        []Func
 }
 
+//go:embed go.mod
+var resources embed.FS
+
 func init() {
-	common.Init("goja_go", "", "", "", "2023", "create GOJA JS bridges to GO modules", "mpetavy", fmt.Sprintf("https://github.com/mpetavy/%s", common.Title()), common.APACHE, nil, nil, nil, run, 0)
+	common.Init("", "", "", "", "create GOJA JS bridges to GO modules", "", "", "", &resources, nil, nil, run, 0)
 }
 
 func filter(info os.FileInfo) bool {
