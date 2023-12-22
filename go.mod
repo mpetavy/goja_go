@@ -3,7 +3,7 @@ module goja_go
 go 1.21.3
 
 require (
-	github.com/mpetavy/common v1.6.36
+	github.com/mpetavy/common v1.6.37
 	golang.org/x/mod v0.14.0
 )
 
