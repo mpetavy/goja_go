@@ -3,7 +3,7 @@ module github.com/mpetavy/goja_go
 go 1.21.3
 
 require (
-	github.com/mpetavy/common v1.8.0
+	github.com/mpetavy/common v1.8.1
 	golang.org/x/mod v0.14.0
 )
 
@@ -40,4 +40,4 @@ require (
 	software.sslmate.com/src/go-pkcs12 v0.2.0 // indirect
 )
 
-replace github.com/mpetavy/common => ../common
+//replace github.com/mpetavy/common => ../common
