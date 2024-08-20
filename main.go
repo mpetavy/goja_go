@@ -393,12 +393,12 @@ func run() error {
 
 	fmt.Printf("%s\n", filename)
 
-	err = os.MkdirAll(filepath.Dir(filename), os.ModePerm)
+	err = os.MkdirAll(filepath.Dir(filename), common.DefaultDirMode)
 	if common.Error(err) {
 		return err
 	}
 
-	err = os.WriteFile(filename, buffer.Bytes(), os.ModePerm)
+	err = os.WriteFile(filename, buffer.Bytes(), common.DefaultFileMode)
 	if common.Error(err) {
 		return err
 	}
