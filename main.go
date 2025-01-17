@@ -116,7 +116,6 @@ func (data *Data) formatType(typ ast.Expr) string {
 		case *ast.MapType:
 			return fmt.Sprintf("map[%s]%s", data.formatType(t.Key), data.formatType(t.Value))
 		case *ast.ChanType:
-			// FIXME
 			panic(fmt.Errorf("unsupported chan type %#v", t))
 		case *ast.BasicLit:
 			return t.Value
