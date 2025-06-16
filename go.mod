@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.23.6
 
 require (
-	github.com/mpetavy/common v1.10.32
+	github.com/mpetavy/common v1.10.33
 	golang.org/x/mod v0.17.0
 )
 
